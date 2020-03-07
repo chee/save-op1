@@ -279,6 +279,12 @@ fn create_song(
     println!("{} - {}", artist_name, song_name);
     println!("{}", &mp3_file_name);
 
+    if ask("upload?") {
+        std::process::Command::new("rsync")
+            .args(&["-av", &mp3_file_name, "snoot:music"])
+            .output()?;
+    }
+
     Ok(())
 }
 
