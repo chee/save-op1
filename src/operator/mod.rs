@@ -1,3 +1,4 @@
+use super::copy::copy_file;
 use std::fs;
 use std::path;
 
@@ -23,7 +24,7 @@ impl Side {
         match self {
             Side::A(path) => Some(path),
             Side::B(path) => Some(path),
-            Side::Neither => None
+            Side::Neither => None,
         }
     }
 }
@@ -90,6 +91,29 @@ impl Tape {
         }
     }
 
+    pub fn save(&self, tracks: Vec<String>) -> std::io::Result<()> {
+        // lol this can't be right
+        let disk_track_1 = path::PathBuf::from(tracks.get(0).unwrap());
+        let disk_track_2 = path::PathBuf::from(tracks.get(1).unwrap());
+        let disk_track_3 = path::PathBuf::from(tracks.get(2).unwrap());
+        let disk_track_4 = path::PathBuf::from(tracks.get(3).unwrap());
+
+        let op1_track_1 = path::PathBuf::from(self.track_1.path());
+        let op1_track_2 = path::PathBuf::from(self.track_2.path());
+        let op1_track_3 = path::PathBuf::from(self.track_3.path());
+        let op1_track_4 = path::PathBuf::from(self.track_4.path());
+
+        println!("writing track_1 to op1");
+        copy_file(&disk_track_1, &op1_track_1)?;
+        println!("writing track_2 to op1");
+        copy_file(&disk_track_2, &op1_track_2)?;
+        println!("writing track_3 to op1");
+        copy_file(&disk_track_3, &op1_track_3)?;
+        println!("writing track_4 to op1");
+        copy_file(&disk_track_4, &op1_track_4)?;
+        Ok(())
+    }
+
     pub fn tracks(&self) -> Vec<&Track> {
         return vec![&self.track_1, &self.track_2, &self.track_3, &self.track_4];
     }
@@ -135,6 +159,10 @@ impl Operator {
             }
         }
         return Ok(has_album && has_tape && has_drum && has_synth);
+    }
+
+    pub fn save_tape(&self, tracks: Vec<String>) -> std::io::Result<()> {
+        self.tape.save(tracks)
     }
 
     pub fn new(mount_path: &path::PathBuf) -> std::io::Result<Operator> {

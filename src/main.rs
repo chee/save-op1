@@ -1,5 +1,6 @@
 use ears::AudioController;
 use std::path;
+mod copy;
 mod disk;
 mod operator;
 mod song;
@@ -171,14 +172,18 @@ fn main_menu() -> std::io::Result<Menu> {
     }
 }
 
-fn load_tape_menu(_op1: &Operator, _disk: &Disk, song_name: &str) -> std::io::Result<()> {
+fn load_tape(op1: &Operator, disk: &Disk, slug: &str) -> std::io::Result<()> {
+    op1.save_tape(disk.track_paths(slug))
+}
+
+fn load_tape_menu(op1: &Operator, disk: &Disk, slug: &str) -> std::io::Result<()> {
     match dialoguer::Select::new()
-        .with_prompt(song_name)
+        .with_prompt(slug)
         .items(&["write to op-1", "back"])
         .interact()
         .unwrap()
     {
-        0 => Ok(()),
+        0 => load_tape(op1, disk, slug),
         1 => Ok(()),
         _ => Ok(()),
     }
@@ -201,7 +206,7 @@ fn save_tape(op1: &Operator, disk: &Disk) -> std::io::Result<()> {
 
 fn tape_menu(op1: &Operator, disk: &Disk) -> std::io::Result<()> {
     match dialoguer::Select::new()
-        .items(&["save", "load", "back"])
+        .items(&["save to disk", "load to op-1", "back"])
         .interact()
         .unwrap()
     {

@@ -1,10 +1,9 @@
+use super::copy::copy_file;
 use super::operator::Track;
 use super::song::Song;
-use pbr::{ProgressBar, Units};
-use std::fs::{create_dir_all, read_dir, File};
-use std::io::{copy, Error, ErrorKind, Result};
+use std::fs::{create_dir_all, read_dir};
+use std::io::{Error, ErrorKind, Result};
 use std::path;
-use tee_readwrite::TeeWriter;
 
 struct SongsPath {
     path: String,
@@ -94,18 +93,6 @@ pub struct Disk {
     synth_dir: path::PathBuf,
     drum_dir: path::PathBuf,
     */
-}
-
-fn copy_file(source: &path::PathBuf, target: &path::PathBuf) -> Result<()> {
-    let mut source = File::open(source)?;
-    let bytes = source.metadata()?.len() as u64;
-    let mut progress_bar = ProgressBar::new(bytes);
-    progress_bar.set_units(Units::Bytes);
-    let mut target = File::create(target)?;
-    let mut tee = TeeWriter::new(&mut target, &mut progress_bar);
-    copy(&mut source, &mut tee)?;
-    progress_bar.finish_print("done");
-    Ok(())
 }
 
 impl Disk {
@@ -211,7 +198,7 @@ impl Disk {
         self.songs.tape_string(&SongArg::Slug(slug))
     }
 
-    pub fn _track_paths(&self, slug: &str) -> Vec<String> {
+    pub fn track_paths(&self, slug: &str) -> Vec<String> {
         let song = &SongArg::Slug(slug);
         vec![
             format!("{}/track_1.aif", self.songs.tape_string(song)),
