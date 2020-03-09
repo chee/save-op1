@@ -1,156 +1,11 @@
 use ears::AudioController;
-use std::fs;
 use std::path;
+mod disk;
+mod operator;
+mod song;
 
-enum Side {
-    A(path::PathBuf),
-    B(path::PathBuf),
-}
-
-impl std::fmt::Display for Side {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match *self {
-            Side::A(_) => write!(f, "side_a"),
-            Side::B(_) => write!(f, "side_b"),
-        }
-    }
-}
-
-struct Album {
-    side_a: Side,
-    side_b: Side,
-}
-
-impl Album {
-    fn check_structure(dir_path: &path::PathBuf) -> bool {
-        let exists = |file_name: &str| -> bool {
-            path::Path::new::<str>(format!("{}/{}", dir_path.to_str().unwrap(), file_name).as_ref())
-                .exists()
-        };
-
-        exists("side_a.aif") && exists("side_b.aif")
-    }
-}
-
-enum Track {
-    One(path::PathBuf),
-    Two(path::PathBuf),
-    Three(path::PathBuf),
-    Four(path::PathBuf),
-}
-
-impl Track {
-    fn path(&self) -> String {
-        match self {
-            Track::One(path) => path.to_str().unwrap().to_owned(),
-            Track::Two(path) => path.to_str().unwrap().to_owned(),
-            Track::Three(path) => path.to_str().unwrap().to_owned(),
-            Track::Four(path) => path.to_str().unwrap().to_owned(),
-        }
-    }
-}
-
-impl std::fmt::Display for Track {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match *self {
-            Track::One(_) => write!(f, "track_1"),
-            Track::Two(_) => write!(f, "track_2"),
-            Track::Three(_) => write!(f, "track_3"),
-            Track::Four(_) => write!(f, "track_4"),
-        }
-    }
-}
-
-struct Tape {
-    track_1: Track,
-    track_2: Track,
-    track_3: Track,
-    track_4: Track,
-}
-
-impl Tape {
-    fn new(t1: path::PathBuf, t2: path::PathBuf, t3: path::PathBuf, t4: path::PathBuf) -> Tape {
-        Tape {
-            track_1: Track::One(t1),
-            track_2: Track::Two(t2),
-            track_3: Track::Three(t3),
-            track_4: Track::Four(t4),
-        }
-    }
-
-    fn tracks(&self) -> Vec<&Track> {
-        return vec![&self.track_1, &self.track_2, &self.track_3, &self.track_4];
-    }
-
-    fn check_structure(dir_path: &path::PathBuf) -> bool {
-        let exists = |file_name: &str| -> bool {
-            path::Path::new::<str>(format!("{}/{}", dir_path.to_str().unwrap(), file_name).as_ref())
-                .exists()
-        };
-
-        exists("track_1.aif")
-            && exists("track_2.aif")
-            && exists("track_3.aif")
-            && exists("track_4.aif")
-    }
-}
-
-struct Operator {
-    album: Album,
-    // drum: Drum,
-    // synth: Synth,
-    tape: Tape,
-}
-
-impl Operator {
-    fn check_structure(dir_path: &path::PathBuf) -> std::io::Result<bool> {
-        let mut has_album = false;
-        let mut has_tape = false;
-        let mut has_drum = false;
-        let mut has_synth = false;
-        for entry in fs::read_dir(dir_path)? {
-            let entry: fs::DirEntry = entry?;
-            let file_path = entry.path();
-            let file_type = entry.file_type()?;
-            if file_type.is_dir() {
-                match entry.file_name().to_str().unwrap() {
-                    "album" => has_album = Album::check_structure(&file_path),
-                    "drum" => has_drum = true,
-                    "tape" => has_tape = Tape::check_structure(&file_path),
-                    "synth" => has_synth = true,
-                    _ => {}
-                };
-            }
-        }
-        return Ok(has_album && has_tape && has_drum && has_synth);
-    }
-
-    fn new(mount_path: &path::PathBuf) -> std::io::Result<Operator> {
-        let is_valid = Operator::check_structure(mount_path)?;
-        let get_path = |suffix: &str| -> path::PathBuf {
-            path::PathBuf::from(format!("{}/{}", mount_path.to_str().unwrap(), suffix))
-        };
-        if is_valid {
-            Ok(Operator {
-                album: Album {
-                    side_a: Side::A(get_path("album/side_a.aif")),
-                    side_b: Side::B(get_path("album/side_b.aif")),
-                },
-                tape: Tape::new(
-                    get_path("tape/track_1.aif"),
-                    get_path("tape/track_2.aif"),
-                    get_path("tape/track_3.aif"),
-                    get_path("tape/track_4.aif"),
-                ),
-            })
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "oh no!",
-            ))
-        }
-    }
-}
+use disk::Disk;
+use operator::{Operator, Side};
 
 fn ask(question: &str) -> bool {
     dialoguer::Confirmation::new()
@@ -163,13 +18,13 @@ fn choose_side(op1: &Operator) -> std::io::Result<&Side> {
     match dialoguer::Select::new()
         .with_prompt("Choose a side")
         .items(&[&op1.album.side_a, &op1.album.side_b])
-        .item("exit")
+        .item("back")
         .interact()
         .unwrap()
     {
         0 => Ok(&op1.album.side_a),
         1 => Ok(&op1.album.side_b),
-        2 => std::process::exit(0),
+        2 => Ok(&Side::Neither),
         _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "wtf?",
@@ -194,10 +49,7 @@ fn save() -> std::io::Result<SideChoice> {
 }
 
 fn preview(side: &Side) -> std::io::Result<()> {
-    let side_path = match side {
-        Side::A(path) => path,
-        Side::B(path) => path,
-    };
+    let side_path = side.path().unwrap();
 
     let mut music = ears::Music::new(side_path.to_str().unwrap()).unwrap();
 
@@ -233,82 +85,150 @@ fn ask_about_side(side: &Side) -> std::io::Result<SideChoice> {
     }
 }
 
+#[derive(PartialEq)]
+enum TapeOption {
+    WithTape,
+    WithoutTape,
+}
+
 fn create_song(
     op1: &Operator,
+    disk: &Disk,
     source: &path::PathBuf,
-    music_dir: &path::PathBuf,
     artist_name: &str,
     song_name: &str,
-    with_tape: bool,
+    tape_option: TapeOption,
 ) -> std::io::Result<()> {
-    let slug = slug::slugify(song_name);
-    let song_dir_name = format!("{}/{}", music_dir.to_str().unwrap(), slug);
-    let aif_file_name = format!("{}/{}/{}.aif", music_dir.to_str().unwrap(), slug, slug);
-    let mp3_file_name = format!("{}/{}/{}.mp3", music_dir.to_str().unwrap(), slug, slug);
-    let song_dir = std::path::Path::new(&song_dir_name);
-    fs::create_dir(&song_dir).unwrap_or_default();
+    let song = song::Song::new(&disk, song_name, artist_name);
 
     println!("copying aif");
-    fs::copy(&source, &aif_file_name)?;
-
-    if with_tape {
-        let tape_dir_name = format!("{}/{}/tape", music_dir.to_str().unwrap(), slug);
-        fs::create_dir(&tape_dir_name).unwrap_or_default();
-
-        for track in op1.tape.tracks() {
-            println!("copying {}", track);
-            let track_path = format!("{}/{}", tape_dir_name, track);
-            fs::copy(track.path(), track_path)?;
-        }
-    }
+    disk.save_aif(&song, source)?;
 
     println!("creating mp3");
-    std::process::Command::new("ffmpeg")
-        .args(&["-i", &aif_file_name, "-ab", "320k", &mp3_file_name])
-        .output()?;
+    disk.create_mp3(&song)?;
 
     println!("tagging mp3");
+    disk.tag_mp3(&song)?;
 
-    let mp3 = taglib::File::new(&mp3_file_name).unwrap();
-    let mut tag = mp3.tag().unwrap();
-    tag.set_title(song_name);
-    tag.set_artist(artist_name);
-    tag.set_comment("large rabbit");
-    mp3.save();
-
-    println!("{} - {}", artist_name, song_name);
-    println!("{}", &mp3_file_name);
+    if tape_option == TapeOption::WithTape {
+        println!("copying tape");
+        disk.save_tape(&song, op1.tape.tracks())?;
+    }
 
     if ask("upload?") {
-        std::process::Command::new("rsync")
-            .args(&["-av", &mp3_file_name, "snoot:music"])
-            .output()?;
+        disk.upload_mp3(&song)?;
     }
 
     Ok(())
 }
 
+fn album_menu(op1: &Operator, disk: &Disk) -> std::io::Result<()> {
+    let artist_name = "quiet party";
+    let side = choose_side(&op1)?;
+
+    let side_path = match side.path() {
+        Some(path) => path,
+        None => return Ok(()),
+    };
+
+    match ask_about_side(&side)? {
+        SideChoice::Nothing => {}
+        SideChoice::Save(name) => create_song(
+            &op1,
+            &disk,
+            side_path,
+            artist_name,
+            &name,
+            TapeOption::WithoutTape,
+        )?,
+        SideChoice::SaveWithTape(name) => create_song(
+            &op1,
+            &disk,
+            side_path,
+            artist_name,
+            &name,
+            TapeOption::WithTape,
+        )?,
+    }
+    Ok(())
+}
+
+enum Menu {
+    Album,
+    Tape,
+}
+
+fn main_menu() -> std::io::Result<Menu> {
+    match dialoguer::Select::new()
+        .items(&["albums", "tapes", "exit" /*"synths", "drums"*/])
+        .interact()
+        .unwrap()
+    {
+        0 => Ok(Menu::Album),
+        1 => Ok(Menu::Tape),
+        2 => std::process::exit(0),
+        _ => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "sorry?")),
+    }
+}
+
+fn load_tape_menu(_op1: &Operator, _disk: &Disk, song_name: &str) -> std::io::Result<()> {
+    match dialoguer::Select::new()
+        .with_prompt(song_name)
+        .items(&["write to op-1", "back"])
+        .interact()
+        .unwrap()
+    {
+        0 => Ok(()),
+        1 => Ok(()),
+        _ => Ok(()),
+    }
+}
+
+fn load_tapes_menu(op1: &Operator, disk: &Disk) -> std::io::Result<()> {
+    let tapes = disk.list_tapes()?;
+    let choice = dialoguer::Select::new().items(&tapes).interact().unwrap();
+    if let Some(tape) = tapes.get(choice) {
+        load_tape_menu(op1, disk, tape)?;
+    }
+    Ok(())
+}
+
+fn save_tape(op1: &Operator, disk: &Disk) -> std::io::Result<()> {
+    let name: String = dialoguer::Input::new().with_prompt("name").interact()?;
+    let song = song::Song::new(&disk, &name, "quiet party");
+    disk.save_tape(&song, op1.tape.tracks())
+}
+
+fn tape_menu(op1: &Operator, disk: &Disk) -> std::io::Result<()> {
+    match dialoguer::Select::new()
+        .items(&["save", "load", "back"])
+        .interact()
+        .unwrap()
+    {
+        0 => save_tape(op1, disk),
+        1 => load_tapes_menu(op1, disk),
+        2 => Ok(()),
+        _ => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "sorry?")),
+    }?;
+    Ok(())
+}
+
 fn main() -> std::io::Result<()> {
     let op1_dir = path::PathBuf::from("/media/chee/54FF-1FEE");
-    let music_dir = path::PathBuf::from("/home/chee/Documents/electronic-music/op1/songs");
-    let artist_name = "quiet party";
+    // let op1_dir = path::PathBuf::from("/home/chee/Projects/save-op1/fake-op1");
+    let music_dir = path::PathBuf::from("/home/chee/Documents/electronic-music/op1");
 
     let op1 = Operator::new(&op1_dir)?;
+    let disk = Disk::new(&music_dir)?;
 
     loop {
-        let side = choose_side(&op1)?;
-        let side_path = match side {
-            Side::A(path) => path,
-            Side::B(path) => path,
-        };
-        match ask_about_side(&side)? {
-            SideChoice::Nothing => {}
-            SideChoice::Save(name) => {
-                create_song(&op1, side_path, &music_dir, artist_name, &name, false)?
-            }
-            SideChoice::SaveWithTape(name) => {
-                create_song(&op1, side_path, &music_dir, artist_name, &name, true)?
-            }
+        match main_menu()? {
+            Menu::Album => album_menu(&op1, &disk),
+            Menu::Tape => tape_menu(&op1, &disk),
+        }?;
+
+        if !ask("would you like do something else?") {
+            std::process::exit(0)
         }
     }
 }
