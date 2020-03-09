@@ -1,8 +1,10 @@
 use super::operator::Track;
 use super::song::Song;
-use std::fs::{copy, create_dir_all, read_dir};
-use std::io::{Error, ErrorKind, Result};
+use pbr::{ProgressBar, Units};
+use std::fs::{create_dir_all, read_dir, File};
+use std::io::{copy, Error, ErrorKind, Result};
 use std::path;
+use tee_readwrite::TeeWriter;
 
 struct SongsPath {
     path: String,
@@ -94,6 +96,18 @@ pub struct Disk {
     */
 }
 
+fn copy_file(source: &path::PathBuf, target: &path::PathBuf) -> Result<()> {
+    let mut source = File::open(source)?;
+    let bytes = source.metadata()?.len() as u64;
+    let mut progress_bar = ProgressBar::new(bytes);
+    progress_bar.set_units(Units::Bytes);
+    let mut target = File::create(target)?;
+    let mut tee = TeeWriter::new(&mut target, &mut progress_bar);
+    copy(&mut source, &mut tee)?;
+    progress_bar.finish_print("done");
+    Ok(())
+}
+
 impl Disk {
     fn make_song_dir(&self, song: &Song) -> Result<()> {
         create_dir_all(self.songs.song(&SongArg::Song(song)))
@@ -140,7 +154,7 @@ impl Disk {
 
     pub fn save_aif(&self, song: &Song, source: &path::PathBuf) -> Result<()> {
         self.make_song_dir(song)?;
-        copy(source, self.songs.aif(&SongArg::Song(song)))?;
+        copy_file(source, &self.songs.aif(&SongArg::Song(song)))?;
         Ok(())
     }
 
@@ -148,9 +162,10 @@ impl Disk {
         self.make_tape_dir(song)?;
 
         for track in tracks {
-            copy(
-                track.path(),
-                self.songs.tape_track(&SongArg::Song(song), track),
+            println!("copying {}", track);
+            copy_file(
+                &path::PathBuf::from(track.path()),
+                &self.songs.tape_track(&SongArg::Song(song), track),
             )?;
         }
 
